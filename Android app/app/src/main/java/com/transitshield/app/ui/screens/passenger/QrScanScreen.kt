@@ -56,6 +56,7 @@ import com.transitshield.app.ui.theme.BorderSubtle
 import com.transitshield.app.ui.theme.OrangeWarning
 import com.transitshield.app.ui.theme.TextPrimary
 import com.transitshield.app.ui.theme.TextSecondary
+import androidx.compose.foundation.layout.Row
 
 @Composable
 fun QrScanScreen(navController: NavController) {
