@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,8 +31,8 @@ import androidx.core.content.ContextCompat.startActivity
 import androidx.navigation.NavController
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
+import com.google.zxing.integration.android.ScanContract
+import com.google.zxing.integration.android.ScanOptions
 import com.transitshield.app.data.network.RetrofitClient
 import com.transitshield.app.data.network.dto.*
 import com.transitshield.app.navigation.Screen
@@ -56,7 +55,7 @@ fun DriverHomeScreen(navController: NavController) {
     var infoMessage by remember { mutableStateOf<String?>(null) }
     var showQrDialog by remember { mutableStateOf(false) }
 
-    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result: com.journeyapps.barcodescanner.ScanIntentResult ->
+    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val scannedValue = result.contents
         if (!scannedValue.isNullOrBlank()) {
             scope.launch {
@@ -299,7 +298,7 @@ private fun AssignedQrDialog(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (qrBitmap != null) {
                     androidx.compose.foundation.Image(
-                        bitmap = qrBitmap.asImageBitmap(),
+                        bitmap = androidx.compose.ui.graphics.asImageBitmap(qrBitmap),
                         contentDescription = "Assigned bus QR",
                         modifier = Modifier.size(220.dp)
                     )
@@ -341,11 +340,10 @@ private fun saveQrToGallery(context: android.content.Context, bitmap: Bitmap, fi
     }
 
     val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
+    var stream: OutputStream? = null
     return try {
-        resolver.openOutputStream(uri)?.use { stream: OutputStream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        } ?: return null
-
+        stream = resolver.openOutputStream(uri)
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -354,6 +352,8 @@ private fun saveQrToGallery(context: android.content.Context, bitmap: Bitmap, fi
         uri
     } catch (_: Exception) {
         null
+    } finally {
+        stream?.close()
     }
 }
 
