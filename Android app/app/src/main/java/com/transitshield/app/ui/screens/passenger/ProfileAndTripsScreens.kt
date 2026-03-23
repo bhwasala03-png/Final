@@ -53,7 +53,8 @@ fun PassengerProfileScreen(navController: NavController) {
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     var user by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<UserDto?>(null) }
     var isEditing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    
+    var points by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0.0) }
+
     var editName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var editAge by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var editPhone by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
@@ -65,6 +66,7 @@ fun PassengerProfileScreen(navController: NavController) {
             editName = me.fullName ?: ""
             editAge = me.age?.toString() ?: ""
             editPhone = me.phoneNumber ?: ""
+            points = RetrofitClient.apiService.getMyBalance()["points"] ?: 0.0
         } catch (e: Exception) {
             // handle error
         }
@@ -162,8 +164,8 @@ fun PassengerProfileScreen(navController: NavController) {
 
             item {
                 WalletCard(
-                    balance = "0.0", // Wallet system not yet fully integrated, placeholder
-                    points = RetrofitClient.apiService.let { "Loading..." } // Kept safe for UI compile
+                    balance = String.format("%.1f", points),
+                    points = String.format("%.1f", points)
                 )
             }
 

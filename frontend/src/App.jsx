@@ -353,27 +353,31 @@ const DriversModule = () => {
 
 // ─── Bus Management with QR ──────────────────────────────────
 const BusManagement = () => {
+  const emptyBus = { busCode: '', registrationNumber: '', busDisplayName: '', capacity: 50, operatorName: '', status: 'ACTIVE' };
   const [buses, setBuses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [qrMap, setQrMap] = useState({});
   const [genMsg, setGenMsg] = useState('');
+  const [form, setForm] = useState(emptyBus);
+  const [editingId, setEditingId] = useState(null);
 
   const fetchBuses = async () => {
+    setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/api/buses`);
       setBuses(res.data);
-      // Fetch active QR for each bus
       const qrs = {};
       for (const bus of res.data) {
         try {
           const qrRes = await axios.get(`${API_BASE}/api/buses/${bus.id}/active-qr`);
-          if (qrRes.data && qrRes.data.qrToken) qrs[bus.id] = qrRes.data;
-        } catch { /* no QR */ }
+          if (qrRes.data?.qrToken) qrs[bus.id] = qrRes.data;
+        } catch { }
       }
       setQrMap(qrs);
     } catch { setBuses([]); }
     setLoading(false);
   };
+
   useEffect(() => { fetchBuses(); }, []);
 
   const generateQr = async (busId) => {
@@ -382,65 +386,229 @@ const BusManagement = () => {
       const res = await axios.post(`${API_BASE}/api/admin/buses/${busId}/generate-qr`);
       setQrMap(prev => ({ ...prev, [busId]: res.data }));
       setGenMsg(`QR generated for bus ${busId}`);
-    } catch (err) {
-      setGenMsg(err.response?.data?.message || 'Failed to generate QR');
+    } catch (err) { setGenMsg(err.response?.data?.message || 'Failed to generate QR'); }
+  };
+
+  const saveBus = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingId) await axios.put(`${API_BASE}/api/buses/${editingId}`, form);
+      else await axios.post(`${API_BASE}/api/buses`, form);
+      setForm(emptyBus); setEditingId(null); fetchBuses();
+    } catch (err) { setGenMsg(err.response?.data?.message || 'Failed to save bus'); }
+  };
+
+  const editBus = (bus) => {
+    setEditingId(bus.id);
+    setForm({
+      busCode: bus.busCode || '',
+      registrationNumber: bus.registrationNumber || '',
+      busDisplayName: bus.busDisplayName || '',
+      capacity: bus.capacity || 50,
+      operatorName: bus.operatorName || '',
+      status: bus.status || 'ACTIVE'
+    });
+  };
+
+  const deleteBus = async (id) => {
+    if (!window.confirm('Delete this bus?')) return;
+    try { await axios.delete(`${API_BASE}/api/buses/${id}`); fetchBuses(); }
+    catch (err) { setGenMsg(err.response?.data?.message || 'Failed to delete bus'); }
+  };
+
+  return (<div className="space-y-6">
+    <div>
+      <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center"><Bus className="mr-2 text-blue-500" size={22} />Bus Fleet & QR Management</h2>
+      <p className="text-sm text-slate-500 dark:text-slate-400">Complete bus CRUD + admin QR generation</p>
+    </div>
+
+    <form onSubmit={saveBus} className="grid grid-cols-1 md:grid-cols-6 gap-3 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 p-4 rounded-xl">
+      <input value={form.busCode} onChange={e => setForm({ ...form, busCode: e.target.value })} placeholder="Bus Code" className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required />
+      <input value={form.registrationNumber} onChange={e => setForm({ ...form, registrationNumber: e.target.value })} placeholder="Registration" className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required />
+      <input value={form.busDisplayName} onChange={e => setForm({ ...form, busDisplayName: e.target.value })} placeholder="Display Name" className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required />
+      <input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} placeholder="Capacity" className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required />
+      <input value={form.operatorName} onChange={e => setForm({ ...form, operatorName: e.target.value })} placeholder="Operator" className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required />
+      <button className="bg-blue-600 text-white rounded-lg px-4 py-2">{editingId ? 'Update Bus' : 'Create Bus'}</button>
+    </form>
+
+    {genMsg && <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400 text-sm rounded-xl px-4 py-3">{genMsg}</div>}
+
+    {loading ? <div className="text-center text-slate-400 py-8">Loading...</div> : (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {buses.map(bus => (
+          <div key={bus.id} className="bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-white">{bus.busDisplayName}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{bus.busCode} · {bus.registrationNumber}</p>
+              </div>
+              <span className="px-2 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 dark:bg-slate-700">{bus.status}</span>
+            </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mb-4">
+              <p>Capacity: <span className="font-medium">{bus.capacity}</span></p>
+              <p>Operator: <span className="font-medium">{bus.operatorName}</span></p>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => editBus(bus)} className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-lg px-3 py-2 text-xs">Edit</button>
+              <button onClick={() => deleteBus(bus.id)} className="flex-1 bg-rose-600 text-white rounded-lg px-3 py-2 text-xs">Delete</button>
+            </div>
+            {qrMap[bus.id] ? (
+              <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3">
+                <p className="text-xs font-mono truncate">{qrMap[bus.id].qrToken}</p>
+                <button onClick={() => generateQr(bus.id)} className="w-full mt-2 bg-amber-500 text-white text-xs font-semibold py-2 rounded-lg">Regenerate QR</button>
+              </div>
+            ) : (
+              <button onClick={() => generateQr(bus.id)} className="w-full bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-lg"><Plus size={12} className="inline mr-1" />Generate QR</button>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
+  </div>);
+};
+
+const AssignmentManagement = () => {
+  const [assignments, setAssignments] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [buses, setBuses] = useState([]);
+  const [variants, setVariants] = useState([]);
+  const [msg, setMsg] = useState('');
+  const [form, setForm] = useState({ busId: '', driverProfileId: '', routeVariantId: '' });
+
+  const fetchAll = async () => {
+    try {
+      const [a, d, b, v] = await Promise.all([
+        axios.get(`${API_BASE}/api/admin/assignments`),
+        axios.get(`${API_BASE}/api/admin/driver-profiles`),
+        axios.get(`${API_BASE}/api/buses`),
+        axios.get(`${API_BASE}/api/route-variants`)
+      ]);
+      setAssignments(a.data); setDrivers(d.data); setBuses(b.data); setVariants(v.data);
+    } catch { setMsg('Failed to load assignment data'); }
+  };
+  useEffect(() => { fetchAll(); }, []);
+
+  const createAssignment = async (e) => {
+    e.preventDefault();
+    setMsg('');
+    try {
+      await axios.post(`${API_BASE}/api/admin/assignments`, {
+        busId: Number(form.busId),
+        driverProfileId: Number(form.driverProfileId),
+        routeVariantId: Number(form.routeVariantId)
+      });
+      setMsg('Driver-bus schedule assignment created');
+      setForm({ busId: '', driverProfileId: '', routeVariantId: '' });
+      fetchAll();
+    } catch (err) { setMsg(err.response?.data?.message || 'Failed to create assignment'); }
+  };
+
+  return (<div className="space-y-6">
+    <div>
+      <h2 className="text-xl font-bold text-slate-800 dark:text-white">Driver-Bus Scheduling Assignments</h2>
+      <p className="text-sm text-slate-500 dark:text-slate-400">Assign drivers + buses to route variants via backend assignment endpoint.</p>
+    </div>
+
+    <form onSubmit={createAssignment} className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 p-4 rounded-xl">
+      <select value={form.driverProfileId} onChange={e => setForm({ ...form, driverProfileId: e.target.value })} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required>
+        <option value="">Select Driver</option>{drivers.map(d => <option key={d.id} value={d.id}>{d.fullName || d.driverCode}</option>)}
+      </select>
+      <select value={form.busId} onChange={e => setForm({ ...form, busId: e.target.value })} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required>
+        <option value="">Select Bus</option>{buses.map(b => <option key={b.id} value={b.id}>{b.busCode} - {b.busDisplayName}</option>)}
+      </select>
+      <select value={form.routeVariantId} onChange={e => setForm({ ...form, routeVariantId: e.target.value })} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" required>
+        <option value="">Select Route Variant</option>{variants.map(v => <option key={v.id} value={v.id}>{v.variantCode} ({v.originName} → {v.destinationName})</option>)}
+      </select>
+      <button className="bg-blue-600 text-white rounded-lg px-4 py-2">Assign</button>
+    </form>
+
+    {msg && <div className="text-sm text-blue-600 dark:text-blue-400">{msg}</div>}
+    <div className="bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="text-left bg-slate-100 dark:bg-slate-900"><th className="p-3">Bus</th><th className="p-3">Driver</th><th className="p-3">Route</th><th className="p-3">Status</th></tr></thead>
+        <tbody>{assignments.map(a => <tr key={a.id} className="border-t border-slate-200 dark:border-slate-700"><td className="p-3">{a.busCode} - {a.registrationNumber}</td><td className="p-3">{a.driverName || a.driverCode}</td><td className="p-3">{a.routeNumber} {a.originName} → {a.destinationName}</td><td className="p-3">{a.assignmentStatus}</td></tr>)}</tbody>
+      </table>
+    </div>
+  </div>);
+};
+
+const LostFoundManagement = () => {
+  const [reports, setReports] = useState([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [msg, setMsg] = useState('');
+
+  const loadReports = async () => {
+    try {
+      const query = statusFilter !== 'ALL' ? `?status=${statusFilter}` : '';
+      const res = await axios.get(`${API_BASE}/api/admin/lost-items${query}`);
+      setReports(res.data || []);
+    } catch {
+      setReports([]);
+      setMsg('Failed to load lost item reports');
     }
   };
+
+  useEffect(() => { loadReports(); }, [statusFilter]);
+
+  const updateStatus = async (id, status) => {
+    const notes = window.prompt('Admin notes (optional):', '') || '';
+    const resolutionNotes = status === 'CLOSED' ? (window.prompt('Resolution notes (optional):', '') || '') : '';
+    try {
+      await axios.put(`${API_BASE}/api/admin/lost-items/${id}/status`, { status, adminNotes: notes, resolutionNotes });
+      setMsg(`Report #${id} updated to ${status}`);
+      loadReports();
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to update status');
+    }
+  };
+
+  const filtered = reports.filter(r => {
+    const q = search.toLowerCase();
+    return !q || [r.itemTitle, r.description, r.routeInfo, r.busInfo, r.reporterName, r.status].some(v => (v || '').toLowerCase().includes(q));
+  });
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center"><Bus className="mr-2 text-blue-500" size={22} />Bus Fleet & QR Management</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Manage buses and generate QR codes (Admin only)</p>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-white">Lost & Found Management</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Admin-only: review, track, and resolve lost item reports.</p>
       </div>
 
-      {genMsg && <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400 text-sm rounded-xl px-4 py-3">{genMsg}</div>}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by item, route, bus, reporter..." className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900" />
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900">
+          {['ALL', 'REPORTED', 'UNDER_REVIEW', 'FOUND', 'CLAIMED', 'CLOSED'].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={loadReports} className="bg-blue-600 text-white rounded-lg px-4 py-2">Refresh</button>
+      </div>
 
-      {loading ? <div className="text-center text-slate-400 py-8">Loading...</div> :
-      buses.length === 0 ? <div className="text-center text-slate-400 dark:text-slate-500 py-8">No buses found.</div> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {buses.map(bus => (
-            <div key={bus.id} className="bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-6 transition-transform hover:-translate-y-1 hover:shadow-xl duration-300">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="font-bold text-slate-800 dark:text-white">{bus.busDisplayName}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{bus.busCode} · {bus.registrationNumber}</p>
-                </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-bold ${bus.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>{bus.status}</span>
-              </div>
-              <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mb-4">
-                <p>Capacity: <span className="text-slate-800 dark:text-white font-medium">{bus.capacity}</span></p>
-                <p>Operator: <span className="text-slate-800 dark:text-white font-medium">{bus.operatorName}</span></p>
-              </div>
+      {msg && <div className="text-sm text-blue-600 dark:text-blue-400">{msg}</div>}
 
-              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center"><QrCode size={14} className="mr-1.5 text-blue-500" />Active QR</span>
-                </div>
-                {qrMap[bus.id] ? (
-                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Eye size={14} className="text-emerald-500" />
-                      <span className="text-xs font-mono text-slate-600 dark:text-slate-400 truncate">{qrMap[bus.id].qrToken}</span>
-                    </div>
-                    <p className="text-xs text-slate-500">{qrMap[bus.id].qrLabel}</p>
-                    <button onClick={() => generateQr(bus.id)} className="w-full mt-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
-                      Regenerate QR (Invalidates Old)
-                    </button>
+      <div className="bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="text-left bg-slate-100 dark:bg-slate-900"><th className="p-3">Item</th><th className="p-3">Reporter</th><th className="p-3">Route/Bus</th><th className="p-3">Status</th><th className="p-3">Notes</th><th className="p-3">Actions</th></tr></thead>
+          <tbody>
+            {filtered.map(r => (
+              <tr key={r.id} className="border-t border-slate-200 dark:border-slate-700 align-top">
+                <td className="p-3"><div className="font-semibold">{r.itemTitle}</div><div className="text-xs text-slate-500">{r.description}</div></td>
+                <td className="p-3">{r.reporterName}<div className="text-xs text-slate-500">{r.reporterRole}</div></td>
+                <td className="p-3">{r.routeInfo || '-'}<div className="text-xs text-slate-500">{r.busInfo || '-'}</div></td>
+                <td className="p-3"><span className="px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-700">{r.status}</span></td>
+                <td className="p-3 text-xs">{r.adminNotes || '-'}{r.resolutionNotes ? <div className="mt-1">Resolved: {r.resolutionNotes}</div> : null}</td>
+                <td className="p-3">
+                  <div className="flex flex-wrap gap-1">
+                    {['UNDER_REVIEW', 'FOUND', 'CLAIMED', 'CLOSED'].map(st => (
+                      <button key={st} onClick={() => updateStatus(r.id, st)} className="px-2 py-1 text-xs rounded bg-blue-600 text-white">{st}</button>
+                    ))}
                   </div>
-                ) : (
-                  <div className="text-center py-3">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mb-2">No QR generated yet</p>
-                    <button onClick={() => generateQr(bus.id)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm">
-                      <Plus size={12} className="inline mr-1" />Generate QR
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && <tr><td className="p-4 text-slate-400" colSpan={6}>No lost item reports found.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
@@ -487,8 +655,7 @@ const PassengerView = ({ user, logout }) => (
 
 // ─── Main App ────────────────────────────────────────────────
 export default function App() {
-  const { user, login, registerPassenger, logout } = useAuth();
-  const [page, setPage] = useState('login');
+  const { user, login, logout } = useAuth();
   const [data, setData] = useState({ stats: { active_buses: 0, total_complaints: 0, lost_items: 0, demerit_warnings: 0 }, recent_violations: [], map_markers: [] });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Overview');
@@ -521,27 +688,16 @@ export default function App() {
     }
   }, [user]);
 
-  // Not logged in → show login/register
-  if (!user) {
-    if (page === 'register') {
-      return <RegisterPage onRegister={registerPassenger} onSwitchToLogin={() => setPage('login')} />;
-    }
-    return <LoginPage onLogin={login} onSwitchToRegister={() => setPage('register')} />;
-  }
+  // Not logged in -> admin login only
+  if (!user) return <LoginPage onLogin={login} />;
 
-  // Passenger → show passenger view
-  if (user.role === 'PASSENGER') {
-    return <PassengerView user={user} logout={logout} />;
-  }
-
-  // Driver logged in on web → redirect to mobile message
-  if (user.role === 'DRIVER') {
+  if (user.role !== 'ADMIN') {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-gray-950 flex items-center justify-center p-4">
         <div className="w-full max-w-lg bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-8 shadow-xl text-center">
-          <Bus className="text-blue-500 mx-auto mb-4" size={40} />
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Driver Portal</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">The driver interface is available on the <strong>TransitShield Android App</strong>. Please use the mobile app for your daily operations.</p>
+          <ShieldCheck className="text-blue-500 mx-auto mb-4" size={40} />
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Admin-Only Web Dashboard</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">This web app is restricted to ADMIN accounts. Please continue with the Android app for passenger/driver flows.</p>
           <button onClick={logout} className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium px-6 py-3 rounded-xl transition-colors"><LogOut size={16} className="inline mr-2" />Sign Out</button>
         </div>
       </div>
@@ -648,6 +804,8 @@ export default function App() {
     }
     if (activeTab === 'Drivers') return <DriversModule />;
     if (activeTab === 'Buses & QR') return <BusManagement />;
+    if (activeTab === 'Assignments') return <AssignmentManagement />;
+    if (activeTab === 'Lost & Found') return <LostFoundManagement />;
     return <PlaceholderModule tabName={activeTab} />;
   };
 
@@ -664,6 +822,8 @@ export default function App() {
           <SidebarItem icon={LayoutDashboard} label="Overview" active={activeTab === 'Overview'} onClick={() => setActiveTab('Overview')} />
           <SidebarItem icon={Users} label="Drivers" active={activeTab === 'Drivers'} onClick={() => setActiveTab('Drivers')} />
           <SidebarItem icon={Bus} label="Buses & QR" active={activeTab === 'Buses & QR'} onClick={() => setActiveTab('Buses & QR')} />
+          <SidebarItem icon={UserPlus} label="Assignments" active={activeTab === 'Assignments'} onClick={() => setActiveTab('Assignments')} />
+          <SidebarItem icon={Archive} label="Lost & Found" active={activeTab === 'Lost & Found'} onClick={() => setActiveTab('Lost & Found')} />
         </nav>
         <div className="p-4 border-t border-slate-200 dark:border-slate-800/80 space-y-2">
           <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800/80">

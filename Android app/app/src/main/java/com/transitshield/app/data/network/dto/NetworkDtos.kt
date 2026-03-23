@@ -106,6 +106,49 @@ data class PassengerTripDto(
     val endedAt: String?
 )
 
+data class BusAssignmentDto(
+    val id: Long?,
+    val busId: Long?,
+    val busCode: String?,
+    val registrationNumber: String?,
+    val busDisplayName: String?,
+    val driverProfileId: Long?,
+    val driverCode: String?,
+    val driverUserId: Long?,
+    val driverName: String?,
+    val routeVariantId: Long?,
+    val routeVariantCode: String?,
+    val routeNumber: String?,
+    val routeName: String?,
+    val originName: String?,
+    val destinationName: String?,
+    val directionLabel: String?,
+    val assignmentStatus: String?,
+    val startedAt: String?
+)
+
+// ─── Ticket Validation ───────────────────────────────────
+data class TicketValidationRequest(
+    val scannedValue: String
+)
+
+data class TicketValidationResponse(
+    val valid: Boolean?,
+    val status: String?,
+    val message: String?,
+    val tripId: Long?,
+    val tripRef: String?,
+    val passengerName: String?,
+    val busCode: String?,
+    val routeNumber: String?,
+    val originName: String?,
+    val destinationName: String?,
+    val paymentStatus: String?,
+    val totalFareLkr: Double?,
+    val issuedAt: String?,
+    val validatedAt: String?
+)
+
 // ─── Location ────────────────────────────────────────────
 data class LocationUpdateRequest(
     val busId: Long,
@@ -174,6 +217,36 @@ data class DriverDashboardDto(
     val lostItems: List<LostItemDto>?
 )
 
+data class DriverScheduleDto(
+    val assignmentId: Long?,
+    val driverProfileId: Long?,
+    val driverUserId: Long?,
+    val driverName: String?,
+    val driverCode: String?,
+    val depot: String?,
+    val busId: Long?,
+    val busCode: String?,
+    val busDisplayName: String?,
+    val registrationNumber: String?,
+    val capacity: Int?,
+    val operatorName: String?,
+    val busStatus: String?,
+    val routeVariantId: Long?,
+    val routeVariantCode: String?,
+    val routeNumber: String?,
+    val routeName: String?,
+    val originName: String?,
+    val destinationName: String?,
+    val directionLabel: String?,
+    val assignmentStatus: String?,
+    val startedAt: String?,
+    val endedAt: String?,
+    val hasActiveQr: Boolean?,
+    val activeQrId: Long?,
+    val activeQrLabel: String?,
+    val activeQrToken: String?
+)
+
 data class DriverAlertDto(
     val type: String?,
     val title: String?,
@@ -187,4 +260,34 @@ data class LostItemDto(
     val route: String?,
     val time: String?,
     val status: String?
+)
+
+
+data class LostItemReportCreateRequest(
+    val itemTitle: String,
+    val description: String,
+    val category: String?,
+    val routeInfo: String?,
+    val busInfo: String?,
+    val lostAt: String?,
+    val contactDetails: String?
+)
+
+data class LostItemReportDto(
+    val id: Long?,
+    val reporterUserId: Long?,
+    val reporterName: String?,
+    val reporterRole: String?,
+    val itemTitle: String?,
+    val description: String?,
+    val category: String?,
+    val routeInfo: String?,
+    val busInfo: String?,
+    val lostAt: String?,
+    val contactDetails: String?,
+    val status: String?,
+    val adminNotes: String?,
+    val resolutionNotes: String?,
+    val createdAt: String?,
+    val updatedAt: String?
 )

@@ -153,7 +153,7 @@ fun ActiveTripScreen(navController: NavController) {
             Spacer(Modifier.height(20.dp))
 
             PrimaryButton(
-                text = "Show Ticket to Conductor",
+                text = "Show Ticket QR",
                 onClick = { navController.navigate(Screen.ConductorVerification.route) }
             )
 
