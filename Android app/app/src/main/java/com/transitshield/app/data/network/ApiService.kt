@@ -39,6 +39,9 @@ interface ApiService {
     @GET("trips/passenger/{passengerId}/active")
     suspend fun getActiveTrip(@Path("passengerId") passengerId: Long): PassengerTripDto
 
+    @GET("trips/me/active")
+    suspend fun getMyActiveTrip(): PassengerTripDto
+
     @GET("trips/passenger/{passengerId}/history")
     suspend fun getTripHistory(@Path("passengerId") passengerId: Long): List<PassengerTripDto>
 
@@ -69,4 +72,28 @@ interface ApiService {
     // ─── Driver ──────────────────────────────────────────────
     @GET("driver/dashboard")
     suspend fun getDriverDashboard(): DriverDashboardDto
+
+    @GET("driver/schedule")
+    suspend fun getDriverSchedule(): DriverScheduleDto
+
+    @GET("driver/alerts")
+    suspend fun getDriverAlerts(): List<DriverAlertDto>
+
+    @GET("driver/assigned-bus/qr")
+    suspend fun getAssignedBusQr(): BusQrCodeDto
+
+    @GET("tickets/assignments/active")
+    suspend fun getActiveAssignments(): List<BusAssignmentDto>
+
+    @POST("driver/tickets/validate")
+    suspend fun validatePassengerTicket(@Body request: TicketValidationRequest): TicketValidationResponse
+
+
+    // ─── Lost & Found ──────────────────────────────────────
+    @POST("lost-items")
+    suspend fun createLostItemReport(@Body request: LostItemReportCreateRequest): LostItemReportDto
+
+    @GET("lost-items/me")
+    suspend fun getMyLostItemReports(): List<LostItemReportDto>
+
 }

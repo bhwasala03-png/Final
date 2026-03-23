@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.transitshield.app.ui.components.*
 import com.transitshield.app.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun ComplaintSubmissionScreen(navController: NavController) {
@@ -165,13 +166,29 @@ fun ComplaintSubmissionScreen(navController: NavController) {
 
 @Composable
 fun LostItemReportScreen(navController: NavController) {
-    var busRoute by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("") }
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var itemTitle by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("") }
+    var routeInfo by remember { mutableStateOf("") }
+    var busInfo by remember { mutableStateOf("") }
+    var lostAt by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var contactDetails by remember { mutableStateOf("") }
     var submitted by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var myReports by remember { mutableStateOf(listOf<com.transitshield.app.data.network.dto.LostItemReportDto>()) }
+
+    suspend fun loadMyReports() {
+        runCatching { com.transitshield.app.data.network.RetrofitClient.apiService.getMyLostItemReports() }
+            .onSuccess { myReports = it }
+    }
+
+    LaunchedEffect(Unit) { loadMyReports() }
 
     if (submitted) {
-        SubmittedSuccessCard(title = "Report Submitted", message = "Your lost item report has been filed. Our team will check and contact you.") {
+        SubmittedSuccessCard(title = "Report Submitted", message = "Your lost item report has been filed and saved.") {
+            submitted = false
+            errorMessage = null
             navController.popBackStack()
         }
         return
@@ -201,55 +218,89 @@ fun LostItemReportScreen(navController: NavController) {
                         Text("Lost Item Report", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text("We'll notify the driver and check the bus for your item.", color = TextSecondary, fontSize = 13.sp)
+                    Text("Report a lost item and track its status.", color = TextSecondary, fontSize = 13.sp)
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-
-            ComplaintFormField("Bus Route / Number", busRoute, { busRoute = it }, placeholder = "e.g. Route 138 or NC-3421")
-            Spacer(Modifier.height(14.dp))
-            ComplaintFormField("Approximate Time of Loss", time, { time = it }, placeholder = "e.g. Today at 11:30 AM")
-            Spacer(Modifier.height(14.dp))
+            ComplaintFormField("Item Title", itemTitle, { itemTitle = it }, placeholder = "e.g. Black backpack")
+            Spacer(Modifier.height(10.dp))
+            ComplaintFormField("Category", category, { category = it }, placeholder = "e.g. Bag / Phone / Document")
+            Spacer(Modifier.height(10.dp))
+            ComplaintFormField("Route", routeInfo, { routeInfo = it }, placeholder = "e.g. Route 138")
+            Spacer(Modifier.height(10.dp))
+            ComplaintFormField("Bus", busInfo, { busInfo = it }, placeholder = "e.g. NC-3421")
+            Spacer(Modifier.height(10.dp))
+            ComplaintFormField("Lost Date/Time (ISO)", lostAt, { lostAt = it }, placeholder = "e.g. 2026-03-23T11:30:00")
+            Spacer(Modifier.height(10.dp))
             ComplaintFormField(
                 "Item Description",
                 description,
                 { description = it },
-                placeholder = "Describe the item – colour, brand, size...",
+                placeholder = "Describe the item...",
                 singleLine = false,
                 maxLines = 4
             )
+            Spacer(Modifier.height(10.dp))
+            ComplaintFormField("Contact Details", contactDetails, { contactDetails = it }, placeholder = "Phone or email")
 
-            Spacer(Modifier.height(14.dp))
-
-            // Photo Upload Placeholder
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = BgCard),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = PurpleInfo, modifier = Modifier.size(32.dp))
-                    Spacer(Modifier.height(6.dp))
-                    Text("Add Photo of Lost Item (Optional)", color = TextSecondary, fontSize = 13.sp)
-                    Text("Helps us identify the item faster", color = TextMuted, fontSize = 11.sp)
-                }
+            errorMessage?.let {
+                Spacer(Modifier.height(12.dp))
+                Text(it, color = RedError, fontSize = 12.sp)
             }
 
-            Spacer(Modifier.height(24.dp))
-
+            Spacer(Modifier.height(18.dp))
             PrimaryButton(
                 text = "Submit Lost Item Report",
-                onClick = { submitted = true },
-                enabled = busRoute.isNotBlank() && description.isNotBlank()
+                onClick = {
+                    errorMessage = null
+                    coroutineScope.launch {
+                        runCatching {
+                            com.transitshield.app.data.network.RetrofitClient.apiService.createLostItemReport(
+                                com.transitshield.app.data.network.dto.LostItemReportCreateRequest(
+                                    itemTitle = itemTitle,
+                                    description = description,
+                                    category = category.takeIf { it.isNotBlank() },
+                                    routeInfo = routeInfo.takeIf { it.isNotBlank() },
+                                    busInfo = busInfo.takeIf { it.isNotBlank() },
+                                    lostAt = lostAt.takeIf { it.isNotBlank() },
+                                    contactDetails = contactDetails.takeIf { it.isNotBlank() }
+                                )
+                            )
+                        }.onSuccess {
+                            submitted = true
+                            itemTitle = ""; category = ""; routeInfo = ""; busInfo = ""; lostAt = ""; description = ""; contactDetails = ""
+                            loadMyReports()
+                        }.onFailure {
+                            errorMessage = it.message ?: "Failed to submit report"
+                        }
+                    }
+                },
+                enabled = itemTitle.isNotBlank() && description.isNotBlank()
             )
 
+            Spacer(Modifier.height(20.dp))
+            SectionHeader("My Lost Item Reports")
+            Spacer(Modifier.height(8.dp))
+            if (myReports.isEmpty()) {
+                Text("No reports submitted yet.", color = TextMuted, fontSize = 13.sp)
+            } else {
+                myReports.forEach { report ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = BgCard),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(report.itemTitle ?: "-", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                            Text(report.description ?: "", color = TextSecondary, fontSize = 12.sp)
+                            Text("Status: ${report.status ?: "REPORTED"}", color = BlueElectric, fontSize = 12.sp)
+                            report.adminNotes?.takeIf { it.isNotBlank() }?.let { Text("Admin: $it", color = TextMuted, fontSize = 11.sp) }
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(16.dp))
         }
     }

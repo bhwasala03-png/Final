@@ -262,17 +262,17 @@ fun LoginScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // Demo credentials hint
+            // Backend connectivity hint
             Card(
                 shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = BgCard),
                 border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Demo Accounts", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Server Connection", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
-                    Text("Passenger: passenger@demo.com / password", color = TextSecondary, fontSize = 11.sp)
-                    Text("Driver: driver@demo.com / password", color = TextSecondary, fontSize = 11.sp)
+                    Text("Emulator: 10.0.2.2:8080", color = TextSecondary, fontSize = 11.sp)
+                    Text("Real device: set your laptop Wi-Fi IP in Settings.", color = TextSecondary, fontSize = 11.sp)
                 }
             }
         }
