@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class LostItemReportCreateRequest {
+    private Long tripId;
     private String itemTitle;
     private String description;
     private String category;

@@ -9,6 +9,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import RoutesAdmin from './pages/RoutesAdmin';
+import ComplaintsAdmin from './pages/ComplaintsAdmin';
 
 const API_BASE = 'http://localhost:8080';
 
@@ -808,6 +809,7 @@ export default function App() {
     if (activeTab === 'Assignments') return <AssignmentManagement />;
     if (activeTab === 'Routes & Stops') return <RoutesAdmin apiBase={API_BASE} />;
     if (activeTab === 'Lost & Found') return <LostFoundManagement />;
+    if (activeTab === 'Complaints') return <ComplaintsAdmin apiBase={API_BASE} />;
     return <PlaceholderModule tabName={activeTab} />;
   };
 
@@ -827,6 +829,7 @@ export default function App() {
           <SidebarItem icon={UserPlus} label="Assignments" active={activeTab === 'Assignments'} onClick={() => setActiveTab('Assignments')} />
           <SidebarItem icon={MapIcon} label="Routes & Stops" active={activeTab === 'Routes & Stops'} onClick={() => setActiveTab('Routes & Stops')} />
           <SidebarItem icon={Archive} label="Lost & Found" active={activeTab === 'Lost & Found'} onClick={() => setActiveTab('Lost & Found')} />
+          <SidebarItem icon={AlertTriangle} label="Complaints" active={activeTab === 'Complaints'} onClick={() => setActiveTab('Complaints')} />
         </nav>
         <div className="p-4 border-t border-slate-200 dark:border-slate-800/80 space-y-2">
           <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800/80">

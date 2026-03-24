@@ -7,6 +7,7 @@ import com.transitshield.backend.entity.Bus;
 import com.transitshield.backend.entity.BusAssignment;
 import com.transitshield.backend.entity.DriverProfile;
 import com.transitshield.backend.entity.LostItemReport;
+import com.transitshield.backend.entity.PassengerTrip;
 import com.transitshield.backend.entity.User;
 import com.transitshield.backend.entity.enums.AssignmentStatus;
 import com.transitshield.backend.entity.enums.LostItemStatus;
@@ -15,6 +16,7 @@ import com.transitshield.backend.exception.ResourceNotFoundException;
 import com.transitshield.backend.repository.BusAssignmentRepository;
 import com.transitshield.backend.repository.DriverProfileRepository;
 import com.transitshield.backend.repository.LostItemReportRepository;
+import com.transitshield.backend.repository.PassengerTripRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +32,7 @@ public class LostItemReportService {
     private final LostItemReportRepository lostItemReportRepository;
     private final DriverProfileRepository driverProfileRepository;
     private final BusAssignmentRepository busAssignmentRepository;
+    private final PassengerTripRepository passengerTripRepository;
 
     @Transactional
     public LostItemReportDto create(User reporter, LostItemReportCreateRequest request) {
@@ -47,6 +50,19 @@ public class LostItemReportService {
         entity.setContactDetails(trimToNull(request.getContactDetails()));
         entity.setLostAt(parseDateTimeOrNull(request.getLostAt()));
         entity.setStatus(LostItemStatus.REPORTED);
+
+        if (request.getTripId() != null) {
+            PassengerTrip trip = passengerTripRepository.findById(request.getTripId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Trip not found"));
+            if (trip.getPassengerProfile() == null
+                    || trip.getPassengerProfile().getUser() == null
+                    || !trip.getPassengerProfile().getUser().getId().equals(reporter.getId())) {
+                throw new BadRequestException("Trip does not belong to the authenticated passenger");
+            }
+            if (trip.getBusAssignment() != null && trip.getBusAssignment().getBus() != null) {
+                entity.setBusId(trip.getBusAssignment().getBus().getId());
+            }
+        }
 
         LocalDateTime now = LocalDateTime.now();
         entity.setCreatedAt(now);
@@ -83,18 +99,7 @@ public class LostItemReportService {
             return List.of();
         }
 
-        String busCode = bus.getBusCode() != null ? bus.getBusCode().toLowerCase() : "";
-        String registration = bus.getRegistrationNumber() != null ? bus.getRegistrationNumber().toLowerCase() : "";
-        String displayName = bus.getBusDisplayName() != null ? bus.getBusDisplayName().toLowerCase() : "";
-
-        return lostItemReportRepository.findAll().stream()
-                .filter(report -> {
-                    String busInfo = report.getBusInfo() != null ? report.getBusInfo().toLowerCase() : "";
-                    return (!busCode.isBlank() && busInfo.contains(busCode))
-                            || (!registration.isBlank() && busInfo.contains(registration))
-                            || (!displayName.isBlank() && busInfo.contains(displayName));
-                })
-                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+        return lostItemReportRepository.findByBusIdOrderByCreatedAtDesc(bus.getId()).stream()
                 .map(this::toDto)
                 .toList();
     }
@@ -128,6 +133,7 @@ public class LostItemReportService {
         dto.setCategory(e.getCategory());
         dto.setRouteInfo(e.getRouteInfo());
         dto.setBusInfo(e.getBusInfo());
+        dto.setBusId(e.getBusId());
         dto.setLostAt(e.getLostAt() != null ? e.getLostAt().toString() : null);
         dto.setContactDetails(e.getContactDetails());
         dto.setStatus(e.getStatus());

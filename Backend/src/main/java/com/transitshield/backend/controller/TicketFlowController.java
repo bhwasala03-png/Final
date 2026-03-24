@@ -1,8 +1,6 @@
 package com.transitshield.backend.controller;
 
 import com.transitshield.backend.dto.BusAssignmentDto;
-import com.transitshield.backend.dto.TicketValidationRequest;
-import com.transitshield.backend.dto.TicketValidationResponse;
 import com.transitshield.backend.entity.User;
 import com.transitshield.backend.service.PassengerTicketService;
 import lombok.RequiredArgsConstructor;
@@ -27,20 +25,4 @@ public class TicketFlowController {
         return ResponseEntity.ok(passengerTicketService.getActiveAssignments());
     }
 
-    /**
-     * Driver-only endpoint for validating a passenger ticket QR scan.
-     * The scanned QR may contain either:
-     * - TS_TRIP:{tripRef}
-     * - raw tripRef
-     *
-     * This route is intentionally placed under /api/driver/** so it inherits
-     * the existing driver route protection.
-     */
-    @PostMapping("/api/driver/tickets/validate")
-    public ResponseEntity<TicketValidationResponse> validatePassengerTicket(
-            @AuthenticationPrincipal User user,
-            @RequestBody TicketValidationRequest request
-    ) {
-        return ResponseEntity.ok(passengerTicketService.validateScannedTicket(user, request));
-    }
 }

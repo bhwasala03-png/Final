@@ -16,6 +16,7 @@ public class LostItemReportDto {
     private String category;
     private String routeInfo;
     private String busInfo;
+    private Long busId;
     private String lostAt;
     private String contactDetails;
 

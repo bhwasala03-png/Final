@@ -18,6 +18,7 @@ import com.transitshield.backend.entity.enums.TripStatus;
 import com.transitshield.backend.exception.BadRequestException;
 import com.transitshield.backend.exception.ResourceNotFoundException;
 import com.transitshield.backend.repository.BusAssignmentRepository;
+import com.transitshield.backend.repository.BusQrCodeRepository;
 import com.transitshield.backend.repository.FareRuleRepository;
 import com.transitshield.backend.repository.PassengerProfileRepository;
 import com.transitshield.backend.repository.PassengerTripRepository;
@@ -42,6 +43,7 @@ public class PassengerTripService {
     private final FareRuleRepository fareRuleRepository;
     private final PassengerProfileRepository passengerProfileRepository;
     private final BusAssignmentRepository busAssignmentRepository;
+    private final BusQrCodeRepository busQrCodeRepository;
     private final StopRepository stopRepository;
     private final TripExtensionRepository tripExtensionRepository;
     private final RouteVariantStopRepository routeVariantStopRepository;
@@ -64,6 +66,16 @@ public class PassengerTripService {
 
         BusAssignment assignment = busAssignmentRepository.findById(request.getBusAssignmentId())
                 .orElseThrow(() -> new ResourceNotFoundException("Bus assignment not found"));
+
+        if (request.getQrTokenUsed() == null || request.getQrTokenUsed().isBlank()) {
+            throw new BadRequestException("A scanned bus QR token is required to start a trip");
+        }
+
+        busQrCodeRepository.findByQrTokenAndIsActiveTrue(request.getQrTokenUsed().trim())
+                .filter(qr -> qr.getBus() != null
+                        && assignment.getBus() != null
+                        && qr.getBus().getId().equals(assignment.getBus().getId()))
+                .orElseThrow(() -> new BadRequestException("Scanned QR is invalid for this bus assignment"));
 
         Stop boardingStop = stopRepository.findById(request.getBoardingStopId())
                 .orElseThrow(() -> new ResourceNotFoundException("Boarding stop not found"));
@@ -102,6 +114,8 @@ public class PassengerTripService {
         trip.setTripStatus(TripStatus.ACTIVE);
         trip.setCreatedAt(LocalDateTime.now());
         trip.setDriverValidatedAt(null);
+        trip.setIsVerified(false);
+        trip.setDestinationStop(destinationStop != null ? destinationStop.getStopName() : null);
 
         trip = tripRepository.save(trip);
         return mapToDto(trip);
@@ -168,6 +182,7 @@ public class PassengerTripService {
         tripExtensionRepository.save(extension);
 
         trip.setSelectedDestinationStop(newDestination);
+        trip.setDestinationStop(newDestination.getStopName());
         trip.setExtraFareLkr((trip.getExtraFareLkr() != null ? trip.getExtraFareLkr() : 0.0) + additionalFare);
         trip.setTotalFareLkr((trip.getBaseFareLkr() != null ? trip.getBaseFareLkr() : 0.0) + trip.getExtraFareLkr());
         trip = tripRepository.save(trip);
@@ -190,6 +205,7 @@ public class PassengerTripService {
         }
 
         Stop actualExit = null;
+        int stopsTravelled = 0;
         if (request.getActualExitStopId() != null) {
             actualExit = stopRepository.findById(request.getActualExitStopId())
                     .orElseThrow(() -> new ResourceNotFoundException("Exit stop not found"));
@@ -201,7 +217,49 @@ public class PassengerTripService {
             );
         }
 
+        if (trip.getBoardingStop() != null && actualExit != null && trip.getBusAssignment() != null
+                && trip.getBusAssignment().getRouteVariant() != null) {
+            List<RouteVariantStop> routeStops = routeVariantStopRepository
+                    .findByRouteVariantIdOrderByStopOrderAsc(trip.getBusAssignment().getRouteVariant().getId());
+            Integer boardingOrder = routeStops.stream()
+                    .filter(rvs -> rvs.getStop() != null && rvs.getStop().getId().equals(trip.getBoardingStop().getId()))
+                    .map(RouteVariantStop::getStopOrder)
+                    .findFirst()
+                    .orElse(null);
+            Integer exitOrder = routeStops.stream()
+                    .filter(rvs -> rvs.getStop() != null && rvs.getStop().getId().equals(actualExit.getId()))
+                    .map(RouteVariantStop::getStopOrder)
+                    .findFirst()
+                    .orElse(null);
+            if (boardingOrder != null && exitOrder != null) {
+                stopsTravelled = Math.max(0, Math.abs(exitOrder - boardingOrder));
+            }
+        }
+
+        if (stopsTravelled == 0) {
+            LocalDateTime endTime = LocalDateTime.now();
+            LocalDateTime startTime = trip.getCreatedAt() != null ? trip.getCreatedAt() : endTime.minusMinutes(10);
+            long minutesTravelled = Math.max(1, java.time.Duration.between(startTime, endTime).toMinutes());
+            stopsTravelled = Math.max(1, (int) Math.ceil(minutesTravelled / 8.0));
+        }
+
+        double baseFare = 20.0;
+        double perStopRate = 15.0;
+        Double finalFare = baseFare + (stopsTravelled * perStopRate);
+
+        PassengerProfile passengerProfile = trip.getPassengerProfile();
+        double walletBalance = passengerProfile.getWalletBalance() != null ? passengerProfile.getWalletBalance() : 0.0;
+        if (walletBalance < finalFare) {
+            throw new BadRequestException("Insufficient Funds");
+        }
+        passengerProfile.setWalletBalance(walletBalance - finalFare);
+        passengerProfileRepository.save(passengerProfile);
+
+        trip.setBaseFareLkr(finalFare);
+        trip.setExtraFareLkr(0.0);
+        trip.setTotalFareLkr(finalFare);
         trip.setActualExitStop(actualExit);
+        trip.setDestinationStop(actualExit != null ? actualExit.getStopName() : trip.getDestinationStop());
         trip.setTripStatus(TripStatus.COMPLETED);
         trip.setEndedAt(LocalDateTime.now());
         trip.setPaymentStatus(PaymentStatus.PAID);
@@ -237,6 +295,13 @@ public class PassengerTripService {
     public List<PassengerTripDto> getTripHistoryForUser(User user) {
         PassengerProfile profile = resolvePassengerProfile(user);
         return getTripHistory(profile.getId());
+    }
+
+    public List<PassengerTripDto> getActiveTripsByBusAssignment(Long busAssignmentId) {
+        return tripRepository.findByBusAssignmentIdAndTripStatus(busAssignmentId, TripStatus.ACTIVE)
+                .stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
     }
 
     private PassengerProfile resolvePassengerProfile(User user) {
@@ -315,6 +380,8 @@ public class PassengerTripService {
         dto.setTicketQrPayload(buildTicketPayload(trip));
         dto.setDriverValidated(trip.getDriverValidatedAt() != null);
         dto.setDriverValidatedAt(trip.getDriverValidatedAt());
+        dto.setIsVerified(Boolean.TRUE.equals(trip.getIsVerified()));
+        dto.setDestinationStop(trip.getDestinationStop());
 
         if (trip.getBoardingStop() != null) {
             dto.setBoardingStopId(trip.getBoardingStop().getId());
