@@ -38,7 +38,6 @@ import java.util.stream.Collectors;
 public class PassengerTicketService {
 
     private static final String TRIP_QR_PREFIX = "TS_TRIP:";
-    private static final long TICKET_EXPIRY_HOURS = 6L;
 
     private final BusAssignmentRepository busAssignmentRepository;
     private final DriverProfileRepository driverProfileRepository;
@@ -80,9 +79,9 @@ public class PassengerTicketService {
     }
 
     @Transactional
-    public TicketValidationResponse validateScannedTicket(User driverUser, TicketValidationRequest request) {
-        if (request == null || request.getScannedValue() == null || request.getScannedValue().isBlank()) {
-            throw new BadRequestException("Scanned ticket value is required");
+    public void validateTicketByTripId(User driverUser, TicketValidationRequest request) {
+        if (request == null || request.getPassengerTripId() == null) {
+            throw new BadRequestException("Passenger trip ID is required");
         }
 
         DriverProfile driverProfile = driverProfileRepository.findByUserId(driverUser.getId())
@@ -92,79 +91,25 @@ public class PassengerTicketService {
                 .findFirstByDriverProfileIdAndAssignmentStatusOrderByStartedAtDesc(driverProfile.getId(), AssignmentStatus.ACTIVE)
                 .orElseThrow(() -> new BadRequestException("Driver has no active bus assignment"));
 
-        String tripRef = extractTripRef(request.getScannedValue());
-
-        PassengerTrip trip = passengerTripRepository.findByTripRef(tripRef)
+        PassengerTrip trip = passengerTripRepository.findById(request.getPassengerTripId())
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
 
-        TicketValidationResponse response = mapTripToValidationResponse(trip);
-        response.setDriverProfileId(driverProfile.getId());
-        response.setDriverName(driverUser.getFullName());
-        response.setDriverCode(driverProfile.getDriverCode());
-
         if (trip.getTripStatus() != TripStatus.ACTIVE) {
-            response.setValid(false);
-            response.setStatus("COMPLETED");
-            response.setMessage("This ticket has already been used and the trip is completed.");
-            response.setValidatedAt(getDriverValidatedAt(trip));
-            return response;
+            throw new BadRequestException("Only active trips can be verified");
         }
 
         if (trip.getPaymentStatus() != PaymentStatus.PAID) {
-            response.setValid(false);
-            response.setStatus("UNPAID");
-            response.setMessage("This passenger ticket is not paid.");
-            response.setValidatedAt(getDriverValidatedAt(trip));
-            return response;
-        }
-
-        if (trip.getCreatedAt() != null && trip.getCreatedAt().isBefore(LocalDateTime.now().minusHours(TICKET_EXPIRY_HOURS))) {
-            response.setValid(false);
-            response.setStatus("EXPIRED");
-            response.setMessage("This passenger ticket has expired.");
-            response.setValidatedAt(getDriverValidatedAt(trip));
-            return response;
+            throw new BadRequestException("Trip payment is not settled");
         }
 
         if (trip.getBusAssignment() == null || !trip.getBusAssignment().getId().equals(activeAssignment.getId())) {
-            response.setValid(false);
-            response.setStatus("MISMATCHED_ASSIGNMENT");
-            response.setMessage("This ticket belongs to a different bus assignment.");
-            response.setValidatedAt(getDriverValidatedAt(trip));
-            return response;
-        }
-
-        LocalDateTime existingValidatedAt = getDriverValidatedAt(trip);
-        if (existingValidatedAt != null) {
-            response.setValid(false);
-            response.setStatus("DUPLICATE");
-            response.setMessage("This passenger ticket was already validated.");
-            response.setValidatedAt(existingValidatedAt);
-            return response;
+            throw new BadRequestException("Trip does not belong to driver's assigned bus");
         }
 
         LocalDateTime validatedAt = LocalDateTime.now();
         setDriverValidatedAt(trip, validatedAt);
+        trip.setIsVerified(true);
         passengerTripRepository.save(trip);
-
-        response.setValid(true);
-        response.setStatus("VALID");
-        response.setMessage("Passenger ticket validated successfully.");
-        response.setValidatedAt(validatedAt);
-        return response;
-    }
-
-    private String extractTripRef(String scannedValue) {
-        String value = scannedValue.trim();
-        if (value.startsWith(TRIP_QR_PREFIX)) {
-            value = value.substring(TRIP_QR_PREFIX.length()).trim();
-        }
-
-        if (value.isBlank()) {
-            throw new BadRequestException("Scanned ticket value is invalid");
-        }
-
-        return value;
     }
 
     private BusAssignmentDto mapAssignmentToDto(BusAssignment entity) {

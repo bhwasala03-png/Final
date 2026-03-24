@@ -56,6 +56,10 @@ public class PassengerTrip {
 
     private LocalDateTime driverValidatedAt;
 
+    private Boolean isVerified = false;
+
+    private String destinationStop;
+
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus = PaymentStatus.PENDING;
 

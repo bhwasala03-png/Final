@@ -8,4 +8,5 @@ import java.util.List;
 public interface LostItemReportRepository extends JpaRepository<LostItemReport, Long> {
     List<LostItemReport> findByReporterUserIdOrderByCreatedAtDesc(Long reporterUserId);
     List<LostItemReport> findByStatusOrderByCreatedAtDesc(com.transitshield.backend.entity.enums.LostItemStatus status);
+    List<LostItemReport> findByBusIdOrderByCreatedAtDesc(Long busId);
 }

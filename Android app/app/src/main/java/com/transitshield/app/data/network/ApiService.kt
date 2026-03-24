@@ -45,6 +45,9 @@ interface ApiService {
     @GET("trips/passenger/{passengerId}/history")
     suspend fun getTripHistory(@Path("passengerId") passengerId: Long): List<PassengerTripDto>
 
+    @GET("trips/me/history")
+    suspend fun getMyTripHistory(): List<PassengerTripDto>
+
     // ─── Location ────────────────────────────────────────────
     @POST("location/update")
     suspend fun updateLocation(@Body request: LocationUpdateRequest): Unit
@@ -85,12 +88,20 @@ interface ApiService {
     @GET("driver/lost-items")
     suspend fun getDriverLostItems(): List<LostItemReportDto>
 
+    @GET("driver/manifest")
+    suspend fun getDriverManifest(): List<PassengerTripDto>
+
     @GET("tickets/assignments/active")
     suspend fun getActiveAssignments(): List<BusAssignmentDto>
 
     @POST("driver/tickets/validate")
-    suspend fun validatePassengerTicket(@Body request: TicketValidationRequest): TicketValidationResponse
+    suspend fun validatePassengerTicket(@Body request: TicketValidationRequest): Map<String, String>
 
+
+
+    // ─── Complaints ──────────────────────────────────────
+    @POST("complaints")
+    suspend fun submitComplaint(@Body request: ComplaintRequest): ComplaintDto
 
     // ─── Lost & Found ──────────────────────────────────────
     @POST("lost-items")

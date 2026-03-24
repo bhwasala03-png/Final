@@ -1,5 +1,7 @@
 package com.transitshield.app.ui.screens.driver
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,9 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -32,16 +36,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.transitshield.app.data.network.RetrofitClient
 import com.transitshield.app.data.network.dto.LostItemReportDto
+import com.transitshield.app.data.network.dto.PassengerTripDto
+import com.transitshield.app.data.network.dto.TicketValidationRequest
 import com.transitshield.app.navigation.Screen
 import com.transitshield.app.ui.components.AppTopBar
 import com.transitshield.app.ui.theme.BgCard
@@ -49,29 +59,100 @@ import com.transitshield.app.ui.theme.BgDeep
 import com.transitshield.app.ui.theme.BgSurface
 import com.transitshield.app.ui.theme.BlueElectric
 import com.transitshield.app.ui.theme.BorderSubtle
+import com.transitshield.app.ui.theme.GreenSuccess
 import com.transitshield.app.ui.theme.RedError
 import com.transitshield.app.ui.theme.TextMuted
 import com.transitshield.app.ui.theme.TextPrimary
 import com.transitshield.app.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun DriverHomeScreen(navController: NavController) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var lostItems by remember { mutableStateOf<List<LostItemReportDto>>(emptyList()) }
+    var liveManifest by remember { mutableStateOf<List<PassengerTripDto>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
+    suspend fun refreshDashboardData() {
         loading = true
         error = null
-        runCatching { RetrofitClient.apiService.getDriverLostItems() }
-            .onSuccess { lostItems = it }
-            .onFailure { error = it.message ?: "Failed to load active alerts" }
+
+        val lostItemsResult = runCatching { RetrofitClient.apiService.getDriverLostItems() }
+        val manifestResult = runCatching { RetrofitClient.apiService.getDriverManifest() }
+
+        lostItems = lostItemsResult.getOrDefault(emptyList())
+        liveManifest = manifestResult.getOrDefault(emptyList())
+
+        if (lostItemsResult.isFailure && manifestResult.isFailure) {
+            error = manifestResult.exceptionOrNull()?.message
+                ?: lostItemsResult.exceptionOrNull()?.message
+                ?: "Failed to load driver dashboard"
+        }
         loading = false
+    }
+
+    LaunchedEffect(Unit) { refreshDashboardData() }
+
+    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val scanned = result.contents
+        if (scanned.isNullOrBlank()) {
+            Toast.makeText(context, "No ticket QR detected", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            val normalized = scanned.trim()
+            val tripIdFromManifest = when {
+                normalized.startsWith("TS_TRIP:") -> {
+                    val tripRef = normalized.removePrefix("TS_TRIP:").trim()
+                    liveManifest.firstOrNull { it.tripRef == tripRef }?.id
+                }
+                else -> {
+                    normalized.toLongOrNull()
+                        ?: liveManifest.firstOrNull { it.tripRef == normalized }?.id
+                }
+            }
+
+            if (tripIdFromManifest == null) {
+                Toast.makeText(context, "Scanned ticket is not in the current manifest", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            runCatching {
+                RetrofitClient.apiService.validatePassengerTicket(
+                    TicketValidationRequest(passengerTripId = tripIdFromManifest)
+                )
+            }.onSuccess {
+                Toast.makeText(context, it["message"] ?: "Ticket verified", Toast.LENGTH_SHORT).show()
+                refreshDashboardData()
+            }.onFailure {
+                Toast.makeText(context, it.message ?: "Ticket verification failed", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     Scaffold(
         topBar = { AppTopBar(title = "Driver Dashboard", onBack = { navController.popBackStack() }) },
         containerColor = BgDeep,
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    val options = ScanOptions().apply {
+                        setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        setPrompt("Scan Passenger Ticket")
+                        setBeepEnabled(true)
+                        setOrientationLocked(false)
+                    }
+                    scannerLauncher.launch(options)
+                },
+                containerColor = BlueElectric
+            ) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Passenger Ticket")
+            }
+        },
         bottomBar = {
             DriverBottomNav(
                 onProfileClick = { navController.navigate(Screen.DriverProfile.route) }
@@ -125,7 +206,7 @@ fun DriverHomeScreen(navController: NavController) {
             }
 
             item {
-                Text("Active Alerts", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Live Manifest", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
 
             if (loading) {
@@ -134,6 +215,32 @@ fun DriverHomeScreen(navController: NavController) {
                         CircularProgressIndicator(color = BlueElectric)
                     }
                 }
+            }
+
+            if (!loading && liveManifest.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = BgCard),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+                    ) {
+                        Text(
+                            "No active passengers found on this bus.",
+                            color = TextSecondary,
+                            modifier = Modifier.padding(14.dp),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
+            items(liveManifest) { trip ->
+                ManifestPassengerCard(trip)
+            }
+
+            item {
+                Text("Active Alerts", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
 
             error?.let { message ->
@@ -168,6 +275,41 @@ fun DriverHomeScreen(navController: NavController) {
 
             items(lostItems) { item ->
                 LostItemAlertCard(item)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManifestPassengerCard(trip: PassengerTripDto) {
+    val verified = trip.isVerified == true
+    val badgeColor = if (verified) GreenSuccess else RedError
+    val badgeText = if (verified) "Verified" else "Unverified"
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(trip.passengerName ?: "Passenger", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text("Destination: ${trip.destinationStop ?: "Not selected"}", color = TextSecondary, fontSize = 12.sp)
+            }
+
+            Box(
+                modifier = Modifier
+                    .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(999.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text(badgeText, color = badgeColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

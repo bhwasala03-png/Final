@@ -34,6 +34,8 @@ public class LostItemReport {
     @Column(length = 120)
     private String busInfo;
 
+    private Long busId;
+
     private LocalDateTime lostAt;
 
     @Column(length = 220)

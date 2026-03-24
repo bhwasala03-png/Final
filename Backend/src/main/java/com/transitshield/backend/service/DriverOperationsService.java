@@ -175,6 +175,15 @@ public class DriverOperationsService {
                 .orElse(null);
     }
 
+    public Long getActiveAssignmentIdForDriver(User user) {
+        DriverProfile driverProfile = getDriverProfile(user);
+        BusAssignment assignment = getActiveAssignment(driverProfile.getId());
+        if (assignment == null) {
+            throw new ResourceNotFoundException("Driver has no active assignment");
+        }
+        return assignment.getId();
+    }
+
     private DriverProfile getDriverProfile(User user) {
         return driverProfileRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Driver profile not found for user ID: " + user.getId()));

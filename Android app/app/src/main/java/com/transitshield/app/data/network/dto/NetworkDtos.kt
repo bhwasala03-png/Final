@@ -92,7 +92,12 @@ data class PassengerTripDto(
     val id: Long?,
     val tripRef: String?,
     val passengerProfileId: Long?,
+    val passengerName: String?,
     val busAssignmentId: Long?,
+    val busId: Long?,
+    val busCode: String?,
+    val routeNumber: String?,
+    val routeName: String?,
     val qrTokenUsed: String?,
     val boardingStopId: Long?,
     val boardingDetectMethod: String?,
@@ -101,6 +106,8 @@ data class PassengerTripDto(
     val baseFareLkr: Double?,
     val extraFareLkr: Double?,
     val totalFareLkr: Double?,
+    val isVerified: Boolean?,
+    val destinationStop: String?,
     val paymentStatus: String?,
     val tripStatus: String?,
     val createdAt: String?,
@@ -130,7 +137,7 @@ data class BusAssignmentDto(
 
 // ─── Ticket Validation ───────────────────────────────────
 data class TicketValidationRequest(
-    val scannedValue: String
+    val passengerTripId: Long
 )
 
 data class TicketValidationResponse(
@@ -265,6 +272,8 @@ data class LostItemDto(
 
 
 data class LostItemReportCreateRequest(
+    val tripId: Long?,
+    val busId: Long?,
     val itemTitle: String,
     val description: String,
     val category: String?,
@@ -272,6 +281,18 @@ data class LostItemReportCreateRequest(
     val busInfo: String?,
     val lostAt: String?,
     val contactDetails: String?
+)
+
+
+data class ComplaintRequest(
+    val tripId: Long,
+    val description: String,
+    val incidentType: String
+)
+
+data class ComplaintDto(
+    val complaintId: Long?,
+    val message: String?
 )
 
 data class LostItemReportDto(

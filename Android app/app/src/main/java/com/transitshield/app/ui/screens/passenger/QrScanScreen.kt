@@ -1,5 +1,6 @@
 package com.transitshield.app.ui.screens.passenger
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -12,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,16 +31,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,7 +50,12 @@ import androidx.navigation.NavController
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanIntentResult
 import com.journeyapps.barcodescanner.ScanOptions
+import com.transitshield.app.data.network.RetrofitClient
+import com.transitshield.app.data.network.dto.QrScanRequest
+import com.transitshield.app.data.network.dto.TripEndRequest
+import com.transitshield.app.data.network.dto.TripStartRequest
 import com.transitshield.app.navigation.Screen
+import com.transitshield.app.state.AppSession
 import com.transitshield.app.ui.components.AppTopBar
 import com.transitshield.app.ui.components.PrimaryButton
 import com.transitshield.app.ui.theme.BgCard
@@ -56,10 +65,12 @@ import com.transitshield.app.ui.theme.BorderSubtle
 import com.transitshield.app.ui.theme.OrangeWarning
 import com.transitshield.app.ui.theme.TextPrimary
 import com.transitshield.app.ui.theme.TextSecondary
-import androidx.compose.foundation.layout.Row
+import kotlinx.coroutines.launch
 
 @Composable
 fun QrScanScreen(navController: NavController) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val infiniteTransition = rememberInfiniteTransition(label = "scan")
     val scanLineY by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -82,13 +93,60 @@ fun QrScanScreen(navController: NavController) {
 
     var infoMessage by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(Unit) {
+        runCatching { RetrofitClient.apiService.getMyActiveTrip() }
+            .onSuccess { AppSession.activeTrip = it }
+            .onFailure { AppSession.activeTrip = null }
+    }
+
     val scannerLauncher = rememberLauncherForActivityResult(
         contract = ScanContract()
     ) { result: ScanIntentResult ->
         val scannedValue = result.contents
         if (!scannedValue.isNullOrBlank()) {
-            infoMessage = "QR scanned successfully"
-            navController.navigate(Screen.TripDetails.route)
+            scope.launch {
+                runCatching {
+                    val activeTrip = runCatching { RetrofitClient.apiService.getMyActiveTrip() }.getOrNull()
+                    if (activeTrip?.id != null) {
+                        RetrofitClient.apiService.endTrip(
+                            TripEndRequest(tripId = activeTrip.id, actualExitStopId = null)
+                        )
+                    } else {
+                        val me = RetrofitClient.apiService.getMe()
+                        val scan = RetrofitClient.apiService.scanQr(
+                            QrScanRequest(
+                                passengerId = me.id ?: 0L,
+                                qrToken = scannedValue,
+                                latitude = null,
+                                longitude = null
+                            )
+                        )
+                        RetrofitClient.apiService.startTrip(
+                            TripStartRequest(
+                                passengerProfileId = me.id ?: 0L,
+                                busAssignmentId = scan.busAssignmentId
+                                    ?: error("No active bus assignment was returned from QR scan"),
+                                boardingStopId = scan.nearestBoardingStopId
+                                    ?: error("No boarding stop detected for this QR"),
+                                selectedDestinationStopId = null,
+                                qrTokenUsed = scannedValue
+                            )
+                        )
+                    }
+                }.onSuccess { trip ->
+                    AppSession.activeTrip = trip
+                    infoMessage = if (trip.tripStatus.equals("COMPLETED", ignoreCase = true)) {
+                        "Trip ended successfully"
+                    } else {
+                        "Trip started successfully"
+                    }
+                    Toast.makeText(context, infoMessage, Toast.LENGTH_SHORT).show()
+                    navController.navigate(Screen.ActiveTrip.route)
+                }.onFailure {
+                    infoMessage = it.message ?: "QR flow failed"
+                    Toast.makeText(context, infoMessage, Toast.LENGTH_SHORT).show()
+                }
+            }
         } else {
             infoMessage = "No QR code detected. Please try again."
         }

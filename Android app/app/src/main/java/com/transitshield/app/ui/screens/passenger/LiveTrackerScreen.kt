@@ -87,11 +87,20 @@ fun LiveTrackerScreen(navController: NavController) {
                             if (bus.latitude != null && bus.longitude != null) {
                                 val geoPoint = GeoPoint(bus.latitude, bus.longitude)
                                 if (firstGeoPoint == null) firstGeoPoint = geoPoint
+
+                                val distanceKm = calculateDistanceKm(
+                                    6.9271,
+                                    79.8612,
+                                    bus.latitude,
+                                    bus.longitude
+                                )
+                                val speedKmh = (bus.speedKmh ?: 30.0).takeIf { it > 0 } ?: 30.0
+                                val etaMinutes = ((distanceKm / speedKmh) * 60.0).toInt().coerceAtLeast(1)
                                 
                                 val marker = Marker(mapView)
                                 marker.position = geoPoint
                                 marker.title = "Bus #${bus.busId ?: "?"} (Route ${bus.routeVariantId ?: "?"})"
-                                marker.snippet = "Speed: ${bus.speedKmh ?: 0} km/h"
+                                marker.snippet = "Speed: ${"%.1f".format(speedKmh)} km/h • ETA: $etaMinutes mins"
                                 marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                                 mapView.overlays.add(marker)
                             }
@@ -212,6 +221,22 @@ fun LiveTrackerScreen(navController: NavController) {
             }
         }
     }
+}
+
+private fun calculateDistanceKm(
+    lat1: Double,
+    lon1: Double,
+    lat2: Double,
+    lon2: Double
+): Double {
+    val earthRadiusKm = 6371.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return earthRadiusKm * c
 }
 
 @Composable

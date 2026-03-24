@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import android.widget.Toast
 import com.transitshield.app.data.network.RetrofitClient
+import com.transitshield.app.data.network.dto.TripEndRequest
+import com.transitshield.app.state.AppSession
+import kotlinx.coroutines.launch
 import com.transitshield.app.data.network.dto.UserDto
 import com.transitshield.app.navigation.Screen
 import com.transitshield.app.ui.components.*
@@ -108,7 +111,7 @@ fun PassengerHomeScreen(navController: NavController) {
                 Spacer(Modifier.height(20.dp))
 
                 // Active Trip Card
-                ActiveTripBanner(navController)
+                ActiveTripBanner(navController = navController)
 
                 Spacer(Modifier.height(20.dp))
 
@@ -179,6 +182,15 @@ fun PassengerHomeScreen(navController: NavController) {
 
 @Composable
 private fun ActiveTripBanner(navController: NavController) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var hasActiveTrip by remember { mutableStateOf(true) }
+    var endingTrip by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        hasActiveTrip = runCatching { RetrofitClient.apiService.getMyActiveTrip() }.isSuccess
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -201,10 +213,48 @@ private fun ActiveTripBanner(navController: NavController) {
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Active Trip", color = BlueLight, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                Text("Route 138 – Narahenpita → Nugegoda", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(
+                    if (hasActiveTrip) "You are currently in a trip" else "No active trip found",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
             }
-            TextButton(onClick = { navController.navigate(Screen.ActiveTrip.route) }) {
+            TextButton(onClick = { navController.navigate(Screen.ActiveTrip.route) }, enabled = hasActiveTrip) {
                 Text("View", color = BlueElectric, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        endingTrip = true
+                        runCatching {
+                            val activeTrip = RetrofitClient.apiService.getMyActiveTrip()
+                            val tripId = activeTrip.id ?: error("Active trip ID not found")
+                            RetrofitClient.apiService.endTrip(TripEndRequest(tripId = tripId, actualExitStopId = null))
+                        }.onSuccess {
+                            AppSession.clearTripState()
+                            hasActiveTrip = false
+                            Toast.makeText(context, "Trip ended successfully", Toast.LENGTH_SHORT).show()
+                        }.onFailure {
+                            Toast.makeText(context, it.message ?: "Unable to end trip", Toast.LENGTH_SHORT).show()
+                        }
+                        endingTrip = false
+                    }
+                },
+                enabled = hasActiveTrip && !endingTrip,
+                colors = ButtonDefaults.buttonColors(containerColor = RedError),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(if (endingTrip) "Ending..." else "End Trip", color = Color.White)
             }
         }
     }

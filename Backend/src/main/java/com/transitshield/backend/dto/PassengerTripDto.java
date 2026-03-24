@@ -39,6 +39,8 @@ public class PassengerTripDto {
     private String ticketQrPayload;
     private Boolean driverValidated;
     private LocalDateTime driverValidatedAt;
+    private Boolean isVerified;
+    private String destinationStop;
 
     private Long boardingStopId;
     private String boardingStopName;
